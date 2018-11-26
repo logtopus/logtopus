@@ -1,105 +1,63 @@
-extern crate actix;
-extern crate actix_web;
+// extern crate actix;
+// extern crate actix_web;
 extern crate bytes;
 extern crate clap;
 extern crate config;
 extern crate env_logger;
+extern crate futures;
+extern crate futures_fs;
+extern crate hyper;
+extern crate tokio;
 #[macro_use]
 extern crate log;
 
 use clap::{App, Arg, ArgMatches};
+use hyper::service::service_fn_ok;
+use hyper::{Body, Request, Response, Server};
 //use std::collections::HashMap;
+use futures::{Future, Stream};
+use futures_fs::{FsPool, ReadOptions};
+use std::fs::File;
+use std::io::prelude::*;
 
 pub mod cfg;
-mod server;
+// mod server;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 const AUTHORS: &'static str = env!("CARGO_PKG_AUTHORS");
+const PHRASE: &str = "Hello, World!";
 
-fn main() {
-    let cli_matches = parse_cli();
+fn hello_world(_req: Request<Body>) -> Response<Body> {
+    // our source file
+    let fs = FsPool::default();
+    let read = fs.read("Cargo.toml", ReadOptions::default().buffer_size(80));
 
-    init_log(&cli_matches);
+    let what = read.map(|b| {
+        let s = std::str::from_utf8(&b);
+        let line = s.unwrap().to_owned();
+        format!("line: {}\n", line)
+    });
 
-    let maybe_filename = cli_matches.value_of("config");
-
-    let settings = match cfg::read_config(&maybe_filename) {
-        Ok(config) => config,
-        Err(msg) => {
-            println!("Error: {}", msg);
-            std::process::exit(1)
-        }
-    };
-
-    let sys = actix::System::new("root");
-
-    server::start_server(&settings);
-
-    //    println!("\nConfiguration\n\n{:?} \n\n-----------",
-    //             settings.try_into::<HashMap<String, config::Value>>().unwrap());
-
-    sys.run();
+    Response::new(Body::wrap_stream(what))
 }
 
-fn init_log(matches: &ArgMatches) {
-    let loglevel = match matches.occurrences_of("v") {
-        0 => "error",
-        1 => "warn",
-        2 => "info",
-        3 => "debug",
-        _ => "trace",
+fn main() -> std::io::Result<()> {
+    // This is our socket address...
+    let addr = ([127, 0, 0, 1], 3000).into();
+
+    // A `Service` is needed for every connection, so this
+    // creates one from our `hello_world` function.
+    let new_svc = || {
+        // service_fn_ok converts our function into a `Service`
+        service_fn_ok(hello_world)
     };
 
-    let loglevel = match matches.value_of("module") {
-        Some(module) => {
-            let mut module_loglevel = String::from(module);
-            module_loglevel.push_str("=");
-            module_loglevel.push_str(loglevel);
-            module_loglevel
-        }
-        _ => String::from(loglevel),
-    };
+    let server = Server::bind(&addr)
+        .serve(new_svc)
+        .map_err(|e| eprintln!("server error: {}", e));
 
-    std::env::set_var("RUST_LOG", &loglevel);
-    env_logger::init();
-    debug!("Setting log level to {}", &loglevel);
-}
+    // Run this server for... forever!
+    hyper::rt::run(server);
 
-fn parse_cli() -> clap::ArgMatches<'static> {
-    App::new("Logtopus server")
-        .version(VERSION)
-        .author(AUTHORS)
-        .about("Main logtopus server")
-        .arg(
-            Arg::with_name("config")
-            // .required(true)
-            .short("c")
-            .long("config")
-            .value_name("FILE")
-            .help("Sets the configuration file name")
-            .takes_value(true),
-        ).arg(
-            Arg::with_name("module")
-                .short("m")
-                .long("module")
-                .takes_value(true)
-                .help("Sets the optional name of the module for which to set the verbosity level"),
-        ).arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
-                .help("Sets the level of verbosity via loglevel (error, warn, debug and trace)"),
-        ).get_matches()
-}
-
-#[cfg(test)]
-mod tests {
-    use cfg;
-
-    #[test]
-    fn test_read_config() {
-        let settings = cfg::read_config(&Some("tests/testconf.yml")).unwrap();
-        assert_eq!(12345, settings.get_int("http.bind.port").unwrap());
-        assert_eq!("127.0.0.1", settings.get_str("http.bind.ip").unwrap());
-    }
+    Ok(())
 }
