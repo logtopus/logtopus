@@ -6,31 +6,39 @@ extern crate config;
 extern crate env_logger;
 extern crate futures;
 extern crate futures_fs;
+extern crate http;
 extern crate hyper;
 extern crate tokio;
 #[macro_use]
 extern crate log;
+extern crate gotham;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate gotham_derive;
 
 use clap::{App, Arg, ArgMatches};
-use hyper::service::service_fn_ok;
-use hyper::{Body, Request, Response, Server};
+use http::Response;
+use hyper::Body;
 //use std::collections::HashMap;
 use futures::{Future, Stream};
 use futures_fs::{FsPool, ReadOptions};
-use std::fs::File;
-use std::io::prelude::*;
+use gotham::router::builder::*;
+use gotham::router::Router;
+use gotham::state::{FromState, State};
 
 pub mod cfg;
 // mod server;
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const AUTHORS: &'static str = env!("CARGO_PKG_AUTHORS");
-const PHRASE: &str = "Hello, World!";
-
-fn hello_world(_req: Request<Body>) -> Response<Body> {
+fn stream_log(state: State) -> (State, Response<Body>) {
     // our source file
+    let file = {
+        let path = PathExtractor::borrow_from(&state);
+        format!("{}", path.path)
+    };
     let fs = FsPool::default();
-    let read = fs.read("Cargo.toml", ReadOptions::default().buffer_size(80));
+    let read = fs.read(file, ReadOptions::default().buffer_size(80));
 
     let what = read.map(|b| {
         let s = std::str::from_utf8(&b);
@@ -38,26 +46,29 @@ fn hello_world(_req: Request<Body>) -> Response<Body> {
         format!("line: {}\n", line)
     });
 
-    Response::new(Body::wrap_stream(what))
+    (state, Response::new(Body::wrap_stream(what)))
+}
+
+#[derive(Deserialize, StateData, StaticResponseExtender)]
+struct PathExtractor {
+    path: String,
+}
+
+fn router() -> Router {
+    build_simple_router(|route| {
+        route
+            // Note the use of :name variable in the path defined here. The router will map the
+            // second (and last) segment of this path to the field `name` when extracting data.
+            .get("/log/:path")
+            // This tells the Router that for requests which match this route that path extraction
+            // should be invoked storing the result in a `PathExtractor` instance.
+            .with_path_extractor::<PathExtractor>()
+            .to(stream_log);
+    })
 }
 
 fn main() -> std::io::Result<()> {
-    // This is our socket address...
-    let addr = ([127, 0, 0, 1], 3000).into();
-
-    // A `Service` is needed for every connection, so this
-    // creates one from our `hello_world` function.
-    let new_svc = || {
-        // service_fn_ok converts our function into a `Service`
-        service_fn_ok(hello_world)
-    };
-
-    let server = Server::bind(&addr)
-        .serve(new_svc)
-        .map_err(|e| eprintln!("server error: {}", e));
-
-    // Run this server for... forever!
-    hyper::rt::run(server);
-
+    let addr = "127.0.0.1:3001";
+    gotham::start(addr, router());
     Ok(())
 }
