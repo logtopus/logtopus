@@ -35,7 +35,7 @@ fn stream_log(state: State) -> (State, Response<Body>) {
     // our source file
     let file = {
         let path = PathExtractor::borrow_from(&state);
-        format!("{}", path.path)
+        path.path.to_owned()
     };
     let fs = FsPool::default();
     let read = fs.read(file, ReadOptions::default().buffer_size(80));
@@ -67,8 +67,12 @@ fn router() -> Router {
     })
 }
 
-fn main() -> std::io::Result<()> {
+fn start_gotham() {
     let addr = "127.0.0.1:3001";
-    gotham::start(addr, router());
+    gotham::start_with_num_threads(addr, router(), 4);
+}
+
+fn main() -> std::io::Result<()> {
+    start_gotham();
     Ok(())
 }
