@@ -18,12 +18,16 @@ extern crate serde_derive;
 #[macro_use]
 extern crate gotham_derive;
 
+use bytes::Bytes;
 use clap::{App, Arg, ArgMatches};
 use http::Response;
 use hyper::Body;
+use std::fmt::Display;
+use std::io::Error;
+use std::path::Path;
 //use std::collections::HashMap;
 use futures::{Future, Stream};
-use futures_fs::{FsPool, ReadOptions};
+use futures_fs::{FsPool, FsReadStream, ReadOptions};
 use gotham::router::builder::*;
 use gotham::router::Router;
 use gotham::state::{FromState, State};
@@ -31,22 +35,32 @@ use gotham::state::{FromState, State};
 pub mod cfg;
 // mod server;
 
-fn stream_log(state: State) -> (State, Response<Body>) {
+fn stream_log<T: AsRef<str>>(path: T) -> FsReadStream
+where
+    T: Display,
+{
     // our source file
-    let file = {
-        let path = PathExtractor::borrow_from(&state);
-        path.path.to_owned()
-    };
+    let file = format!("{}", path);
     let fs = FsPool::default();
     let read = fs.read(file, ReadOptions::default().buffer_size(80));
 
     let what = read.map(|b| {
         let s = std::str::from_utf8(&b);
-        let line = s.unwrap().to_owned();
-        format!("line: {}\n", line)
+        s.unwrap().to_owned()
     });
 
-    (state, Response::new(Body::wrap_stream(what)))
+    what.into_inner()
+}
+
+fn stream_log_response(state: State) -> (State, Response<Body>) {
+    // our source file
+    let path = {
+        let path = PathExtractor::borrow_from(&state);
+        // FIXME: no clone
+        path.path.clone()
+    };
+    let log = stream_log(path);
+    (state, Response::new(Body::wrap_stream(log)))
 }
 
 #[derive(Deserialize, StateData, StaticResponseExtender)]
@@ -63,7 +77,7 @@ fn router() -> Router {
             // This tells the Router that for requests which match this route that path extraction
             // should be invoked storing the result in a `PathExtractor` instance.
             .with_path_extractor::<PathExtractor>()
-            .to(stream_log);
+            .to(stream_log_response);
     })
 }
 
