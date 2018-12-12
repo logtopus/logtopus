@@ -71,7 +71,7 @@ fn start_gotham() {
 
 fn main() -> std::io::Result<()> {
     let settings = read_config(&None).unwrap();
-    let sys = actix::System::new("tentacle");
+    let sys = actix::System::new("logtopus");
     start_server(&settings);
     start_gotham();
     Ok(())

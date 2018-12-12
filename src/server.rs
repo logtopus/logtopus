@@ -4,10 +4,9 @@ extern crate actix_web;
 use actix_web::{HttpRequest, HttpResponse};
 use bytes::Bytes;
 use config;
-use futures::{Future, Stream};
-use futures_fs::{FsPool, FsReadStream, ReadOptions};
-use std::fmt::Display;
+use futures::Stream;
 use std::fs::File;
+use tokio::prelude::*;
 
 pub fn start_server(settings: &config::Config) {
     let port = settings.get_int("http.bind.port").unwrap();
@@ -40,21 +39,23 @@ fn health(_req: &HttpRequest) -> &'static str {
 fn stream(log: actix_web::Path<String>) -> HttpResponse {
     let ret = log.as_str().to_owned();
     let stream = stream_log(ret);
-    HttpResponse::Ok().streaming(stream)
+    HttpResponse::Ok()
+        .chunked()
+        .streaming(stream.map_err(|_| actix_web::error::PayloadError::Incomplete))
 }
 
 pub fn stream_log<T: AsRef<std::path::Path>>(
     path: T,
-) -> Stream<Item = String, Error = std::io::Error> {
+) -> impl Stream<Item = Bytes, Error = std::io::Error> {
     // our source file
     // let file = format!("{}", path);
     // let fs = FsPool::default();
     // let read = fs.read(file, ReadOptions::default().buffer_size(80));
 
-    let mut file = File::open(path).unwrap();
-    let mut tfile = tokio::fs::File::from_std(file);
+    let file = File::open(path).unwrap();
+    let tfile = tokio::fs::File::from_std(file);
     let linereader =
-        tokio::codec::FramedRead::new(tfile, tokio::codec::LinesCodec::new_with_max_length(2048));
+        tokio::codec::FramedRead::new(tfile, tokio::codec::LinesCodec::new_with_max_length(4096));
 
     // let what = read.map(|b| {
     //     let s = std::str::from_utf8(&b);
@@ -62,5 +63,5 @@ pub fn stream_log<T: AsRef<std::path::Path>>(
     // });
 
     // what.into_inner()
-    linereader
+    linereader.map(|s| Bytes::from(s))
 }
