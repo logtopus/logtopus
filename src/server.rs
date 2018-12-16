@@ -54,8 +54,9 @@ pub fn stream_log<T: AsRef<std::path::Path>>(
 
     let file = File::open(path).unwrap();
     let tfile = tokio::fs::File::from_std(file);
+    // TODO: What is a reasonable line length limit?
     let linereader =
-        tokio::codec::FramedRead::new(tfile, tokio::codec::LinesCodec::new_with_max_length(4096));
+        tokio::codec::FramedRead::new(tfile, tokio::codec::LinesCodec::new_with_max_length(512));
 
     // let what = read.map(|b| {
     //     let s = std::str::from_utf8(&b);

@@ -1,78 +1,61 @@
-extern crate actix;
-extern crate actix_web;
-extern crate bytes;
-extern crate clap;
-extern crate config;
-extern crate env_logger;
-extern crate futures;
-extern crate futures_fs;
-extern crate http;
-extern crate hyper;
-extern crate tokio;
-#[macro_use]
-extern crate log;
-extern crate gotham;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate gotham_derive;
+mod constants;
 
 use clap::{App, Arg, ArgMatches};
-use http::Response;
-use hyper::Body;
-use std::fmt::Display;
-use std::io::Error;
-use std::path::Path;
-//use std::collections::HashMap;
-use gotham::router::builder::*;
-use gotham::router::Router;
-use gotham::state::{FromState, State};
+use log::*;
+use std::error::Error;
 
-mod cfg;
-mod server;
+fn main() -> Result<(), Box<dyn Error>> {
+    let cli_matches = parse_cli();
 
-use cfg::*;
-use server::*;
+    init_log(&cli_matches);
 
-fn stream_log_response(state: State) -> (State, Response<Body>) {
-    // our source file
-    let path = {
-        let path = PathExtractor::borrow_from(&state);
-        // FIXME: no clone
-        path.path.clone()
+    logtopus::run(&cli_matches.value_of("config"))
+}
+
+fn init_log(matches: &ArgMatches) {
+    let loglevel = match matches.occurrences_of("v") {
+        0 => "error",
+        1 => "warn",
+        2 => "info",
+        3 => "debug",
+        _ => "trace",
     };
-    let log = stream_log(path);
-    (state, Response::new(Body::wrap_stream(log)))
+
+    let loglevel = match matches.value_of("module") {
+        Some(module) => {
+            let mut module_loglevel = String::from(module);
+            module_loglevel.push_str("=");
+            module_loglevel.push_str(loglevel);
+            module_loglevel
+        }
+        _ => String::from(loglevel),
+    };
+
+    std::env::set_var("RUST_LOG", &loglevel);
+    env_logger::init();
+    debug!("Setting log level to {}", &loglevel);
 }
 
-#[derive(Deserialize, StateData, StaticResponseExtender)]
-struct PathExtractor {
-    path: String,
-}
-
-fn router() -> Router {
-    build_simple_router(|route| {
-        route
-            // Note the use of :name variable in the path defined here. The router will map the
-            // second (and last) segment of this path to the field `name` when extracting data.
-            .get("/log/:path")
-            // This tells the Router that for requests which match this route that path extraction
-            // should be invoked storing the result in a `PathExtractor` instance.
-            .with_path_extractor::<PathExtractor>()
-            .to(stream_log_response);
-    })
-}
-
-fn start_gotham() {
-    let addr = "127.0.0.1:3001";
-    gotham::start_with_num_threads(addr, router(), 4);
-}
-
-fn main() -> std::io::Result<()> {
-    let settings = read_config(&None).unwrap();
-    let sys = actix::System::new("logtopus");
-    start_server(&settings);
-    start_gotham();
-    Ok(())
+fn parse_cli() -> clap::ArgMatches<'static> {
+    App::new("logtopus server")
+        .version(constants::VERSION)
+        .author(constants::AUTHORS)
+        .about("Provides main logtopus server gateway communicating with the tentacles in a cluster.")
+        .arg(Arg::with_name("config")
+            // .required(true)
+            .short("c")
+            .long("config")
+            .value_name("FILE")
+            .help("Sets the configuration file name")
+            .takes_value(true))
+        .arg(Arg::with_name("module")
+            .short("m")
+            .long("module")
+            .takes_value(true)
+            .help("Sets the optional name of the module for which to set the verbosity level"))
+        .arg(Arg::with_name("v")
+            .short("v")
+            .multiple(true)
+            .help("Level of verbosity (error is default) if used multiple times: warn(v), info(vv), debug(vvv) and trace(vvvv)"))
+        .get_matches()
 }
