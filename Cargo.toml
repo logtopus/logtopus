@@ -5,6 +5,7 @@ authors = ["niveau0 <plingplong@t-online.de>", "kodemaniak <carsten@kodemaniak.d
 publish = false
 description = "Logtopus is the central server connected to its tentacles and providing the API to the Pallium Web UI."
 license = "Apache-2.0"
+edition = "2018"
 
 [dependencies]
 # actix = "0.7" # actor framework
