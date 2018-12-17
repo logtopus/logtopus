@@ -7,9 +7,11 @@ use std::error::Error;
 
 pub fn run<S: AsRef<str>>(maybeSettings: &Option<S>) -> Result<(), Box<dyn Error>> {
     let settings = read_config(maybeSettings).unwrap();
-    start_server(&settings);
 
     let sys = actix::System::new("logtopus");
+
+    start_server(&settings);
+
     sys.run();
 
     Ok(())
