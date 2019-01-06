@@ -1,6 +1,7 @@
 extern crate actix;
 extern crate actix_web;
 
+use crate::tentacle::Tentacle;
 use actix::prelude::*;
 use actix_web::HttpResponse;
 use bytes::Bytes;
@@ -63,6 +64,7 @@ pub fn start_server(settings: &config::Config) {
             .middleware(actix_web::middleware::Logger::default())
             .resource("/health", |r| r.get().with(health))
             .resource("/log/{path}", |r| r.get().with(stream))
+            .resource("/tentacle/{path}", |r| r.get().with(stream_tentacle))
     })
     .bind(addr)
     .expect(&format!("Failed to bind to {}:{}", ip, port))
@@ -85,6 +87,15 @@ fn stream(log: actix_web::Path<String>, state: actix_web::State<ServerState>) ->
     actix::spawn(request.map_err(|e| println!("Streaming Actor has probably died: {}", e)));
     HttpResponse::Ok().streaming(
         rx_body
+            .map(|s| Bytes::from(s))
+            .map_err(|_| actix_web::error::PayloadError::Incomplete),
+    )
+}
+
+fn stream_tentacle(log: actix_web::Path<String>) -> HttpResponse {
+    let log_stream = Tentacle::stream_log(log.as_str());
+    HttpResponse::Ok().streaming(
+        log_stream
             .map(|s| Bytes::from(s))
             .map_err(|_| actix_web::error::PayloadError::Incomplete),
     )
