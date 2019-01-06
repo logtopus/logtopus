@@ -1,5 +1,6 @@
 mod cfg;
 mod server;
+pub mod tentacle;
 
 use crate::cfg::read_config;
 use crate::server::start_server;
