@@ -2,18 +2,21 @@ extern crate actix;
 extern crate actix_web;
 
 use crate::tentacle::Tentacle;
-use actix_web::HttpResponse;
+use actix_web::{HttpResponse, State};
 use bytes::Bytes;
 use config;
+use config::Config;
 use futures::Stream;
+use std::sync::Arc;
 
-pub fn start_server(settings: &config::Config) {
+pub fn start_server(settings: Arc<Config>) {
     let port = settings.get_int("http.bind.port").unwrap();
     let ip = settings.get_str("http.bind.ip").unwrap();
     let addr: std::net::SocketAddr = format!("{}:{}", ip, port).parse().unwrap();
+    let state_factory = ServerStateFactory::from_settings(settings);
 
     actix_web::server::new(move || {
-        actix_web::App::new()
+        actix_web::App::with_state(state_factory.create_state())
             // enable logger
             .middleware(actix_web::middleware::Logger::default())
             .prefix("/api/v1")
@@ -27,11 +30,33 @@ pub fn start_server(settings: &config::Config) {
     println!("Started http server: {:?}", addr);
 }
 
-fn stream_tentacle(log: actix_web::Path<String>) -> HttpResponse {
-    let log_stream = Tentacle::stream_log(log.as_str());
+fn stream_tentacle(log: actix_web::Path<String>, state: State<Tentacle>) -> HttpResponse {
+    let log_stream = state.stream_log(log.as_str());
     HttpResponse::Ok().streaming(
         log_stream
             .map(|s| Bytes::from(s))
             .map_err(|_| actix_web::error::PayloadError::Incomplete),
     )
+}
+
+struct ServerStateFactory {
+    settings: Arc<Config>,
+}
+
+impl Clone for ServerStateFactory {
+    fn clone(&self) -> ServerStateFactory {
+        ServerStateFactory {
+            settings: self.settings.clone(),
+        }
+    }
+}
+
+impl ServerStateFactory {
+    fn from_settings(settings: Arc<Config>) -> ServerStateFactory {
+        ServerStateFactory { settings: settings }
+    }
+
+    fn create_state(&self) -> Tentacle {
+        Tentacle::from_settings(self.settings.clone())
+    }
 }
