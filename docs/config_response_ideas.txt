@@ -1,0 +1,33 @@
+---
+services:
+  system:
+    - type: log
+      filepattern: /var/log/auth.log[.%date]
+      linepattern: <irgendein pattern>
+    - type: log
+      filepattern: /var/log/syslog[.%numbered]
+      linepattern: <irgendein pattern>
+    - type: journal
+      unit: sshd
+      linepattern: %journald%
+  tardis:
+    - type: log
+      filepattern: ...
+      linepattern: ...
+
+
+
+2019-01-10T10:00:000 DEBUG Some message | actor=logtopus.MainActor thread=akka.default-dispatcher-1
+
+pattern
+%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:log-level} %{DATA:message} | actor=%{DATA:actor} thread=%{DATA:thread}
+
+Json pro line:
+
+{"timestamp": 1547114400, "log-level": "DEBUG", "message": "Some message", "actor": "logtopus.MainActor", "thread": "akka.default-dispatcher-1"}
+
+oder
+
+["timestamp", "log-level", "message", "actor", "thread"]
+[1547114400, "DEBUG", "Some message", "logtopus.MainActor", "akka.default-dispatcher-1"]
+
