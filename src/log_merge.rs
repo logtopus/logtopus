@@ -26,11 +26,16 @@ enum SourceState {
     Finished,
 }
 
+struct LogLine {
+    source_idx: usize,
+    line: String,
+}
+
 pub struct LogMerge {
     sources: Vec<LogStream>,
     source_state: Vec<SourceState>,
     finished: usize,
-    buffer: VecDeque<String>,
+    buffer: VecDeque<LogLine>,
 }
 
 impl LogMerge {
@@ -60,30 +65,31 @@ impl LogMerge {
         }
     }
 
-    fn next_line(&mut self) -> String {
+    fn next_line(&mut self) -> LogLine {
         self.buffer.pop_front().unwrap()
     }
 
-    fn insert_into_buffer(&mut self, line: String) {
+    fn insert_into_buffer(&mut self, line: LogLine) {
         self.buffer.push_back(line);
     }
 
-    fn poll_source(&mut self, s: usize) -> Result<(), LogMergeError> {
-        println!("poll source {}", s);
-        match self.sources[s].poll() {
+    fn poll_source(&mut self, source_idx: usize) -> Result<(), LogMergeError> {
+        println!("poll source {}", source_idx);
+        match self.sources[source_idx].poll() {
             Ok(Ready(Some(line))) => {
                 println!("line");
-                self.insert_into_buffer(line);
-                self.source_state[s] = SourceState::Delivered;
+                let log_line = LogLine { source_idx, line };
+                self.insert_into_buffer(log_line);
+                self.source_state[source_idx] = SourceState::Delivered;
             }
             Ok(Ready(None)) => {
                 println!("finished");
-                self.source_state[s] = SourceState::Finished;
+                self.source_state[source_idx] = SourceState::Finished;
                 self.finished += 1;
             }
             Ok(NotReady) => {
                 println!("not ready");
-                self.source_state[s] = SourceState::NeedsPoll;
+                self.source_state[source_idx] = SourceState::NeedsPoll;
             }
             Err(e) => {
                 error!("Poll failed: {}", e);
@@ -115,8 +121,9 @@ impl Stream for LogMerge {
         match self.state() {
             SourceState::Delivered => {
                 println!("Deliver!");
-                let line = self.next_line();
-                Ok(Ready(Some(line)))
+                let log_line = self.next_line();
+                self.source_state[log_line.source_idx] = SourceState::NeedsPoll;
+                Ok(Ready(Some(log_line.line)))
             }
             SourceState::Finished => {
                 println!("Merge finished!");
@@ -124,7 +131,7 @@ impl Stream for LogMerge {
             }
             SourceState::NeedsPoll => {
                 println!("Polling...");
-                Ok(Ready(None))
+                Ok(NotReady)
             }
         }
     }
@@ -181,9 +188,35 @@ mod tests {
                 String::from("s11"),
                 String::from("s21"),
                 String::from("s31"),
-                String::from("s21"),
+                String::from("s12"),
                 String::from("s22"),
-                String::from("s23")
+                String::from("s32")
+            ],
+            result
+        );
+    }
+
+    #[test]
+    fn test_multiple_streams_varying_length() {
+        let s1: LogStream = Box::new(iter_ok(vec![String::from("s11"), String::from("s12")]));
+        let s2: LogStream = Box::new(iter_ok(vec![String::from("s21")]));
+        let s3: LogStream = Box::new(iter_ok(vec![
+            String::from("s31"),
+            String::from("s32"),
+            String::from("s33"),
+        ]));
+        let sources = vec![s1, s2, s3];
+        let merge = LogMerge::new(sources);
+        let mut rt = Runtime::new().unwrap();
+        let result = rt.block_on(merge.collect()).unwrap();
+        assert_eq!(
+            vec![
+                String::from("s11"),
+                String::from("s21"),
+                String::from("s31"),
+                String::from("s12"),
+                String::from("s32"),
+                String::from("s33")
             ],
             result
         );
