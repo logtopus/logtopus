@@ -54,7 +54,7 @@ impl LogMerge {
     }
 
     fn state(&self) -> SourceState {
-        println!("finished: {} of {}", self.finished, self.sources.len());
+        // println!("finished: {} of {}", self.finished, self.sources.len());
         let unfinished = self.sources.len() - self.finished;
         if unfinished == 0 {
             SourceState::Finished
@@ -74,25 +74,25 @@ impl LogMerge {
     }
 
     fn poll_source(&mut self, source_idx: usize) -> Result<(), LogMergeError> {
-        println!("poll source {}", source_idx);
+        // println!("poll source {}", source_idx);
         match self.sources[source_idx].poll() {
             Ok(Ready(Some(line))) => {
-                println!("line");
+                // println!("line");
                 let log_line = LogLine { source_idx, line };
                 self.insert_into_buffer(log_line);
                 self.source_state[source_idx] = SourceState::Delivered;
             }
             Ok(Ready(None)) => {
-                println!("finished");
+                // println!("finished");
                 self.source_state[source_idx] = SourceState::Finished;
                 self.finished += 1;
             }
             Ok(NotReady) => {
-                println!("not ready");
+                // println!("not ready");
                 self.source_state[source_idx] = SourceState::NeedsPoll;
             }
             Err(e) => {
-                error!("Poll failed: {}", e);
+                // error!("Poll failed: {}", e);
                 return Err(LogMergeError::DefaultError);
             }
         }
@@ -105,11 +105,11 @@ impl Stream for LogMerge {
     type Error = LogMergeError;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        println!("poll");
+        // println!("poll");
         for s in 0..self.source_state.len() {
             match self.source_state[s] {
                 SourceState::NeedsPoll => {
-                    println!("Polling source {}", s);
+                    // println!("Polling source {}", s);
                     if let Err(err) = self.poll_source(s) {
                         return Err(err);
                     }
@@ -120,17 +120,17 @@ impl Stream for LogMerge {
         // TODO: After delivering a line, figure out which source needs to be polled. Maybe store metadata with each line about source idx.
         match self.state() {
             SourceState::Delivered => {
-                println!("Deliver!");
+                // println!("Deliver!");
                 let log_line = self.next_line();
                 self.source_state[log_line.source_idx] = SourceState::NeedsPoll;
                 Ok(Ready(Some(log_line.line)))
             }
             SourceState::Finished => {
-                println!("Merge finished!");
+                // println!("Merge finished!");
                 Ok(Ready(None))
             }
             SourceState::NeedsPoll => {
-                println!("Polling...");
+                // println!("Polling...");
                 Ok(NotReady)
             }
         }

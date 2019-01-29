@@ -3,4 +3,5 @@ http.bind.ip: 127.0.0.1
 
 tentacles:
   - http://localhost:8080
-  - http://localhost:8082
+  # - http://localhost:8082
+  # - http://localhost:8083

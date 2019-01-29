@@ -7,6 +7,7 @@ use bytes::Bytes;
 use config;
 use config::Config;
 use futures::Stream;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub fn start_server(settings: Arc<Config>) {
@@ -21,7 +22,7 @@ pub fn start_server(settings: Arc<Config>) {
             .middleware(actix_web::middleware::Logger::default())
             .prefix("/api/v1")
             .resource("/health", |r| r.get().f(|_| HttpResponse::Ok()))
-            .resource("/logs/by-path/{path}", |r| r.get().with(stream_tentacle))
+            .resource("/sources/{id}/content", |r| r.get().with(stream_tentacle))
     })
     .bind(addr)
     .expect(&format!("Failed to bind to {}:{}", ip, port))
@@ -30,8 +31,8 @@ pub fn start_server(settings: Arc<Config>) {
     println!("Started http server: {:?}", addr);
 }
 
-fn stream_tentacle(log: actix_web::Path<String>, state: State<Tentacle>) -> HttpResponse {
-    let log_stream = state.stream_log(log.as_str());
+fn stream_tentacle(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpResponse {
+    let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok().streaming(
         log_stream
             .map(|s| Bytes::from(s))
