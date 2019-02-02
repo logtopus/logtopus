@@ -7,7 +7,7 @@ jobs:
       # your own using the Dockerfile provided below
       # and replace here. I put my own image here for
       # the example.
-      - image: rust
+      - image: circleci/rust:latest
 
     # environment:
     #   # Set your codecov token if your repository is private.
@@ -29,12 +29,17 @@ jobs:
       #       rustup run nightly rustc --version --verbose
       #       rustup run nightly cargo --version --verbose
       #       rustup run nightly cargo build
-      - run:
-          name: Stable Build
-          command: cargo build
+      # - run:
+      #     name: Stable Build
+      #     command: cargo build
       - run:
           name: Test
           command: cargo test
+      - run:
+          name: Test
+          command: cargo build --release
+      - store_artifacts:
+          path: target/release/logtopus
       # - run:
       #     name: Upload Coverage
       #     command: ./scripts/codecov.sh
