@@ -1,3 +1,4 @@
+use crate::log_merge::{LogMerge, LogMergeError, LogStream};
 use actix_web::{client, HttpMessage};
 use config::Config;
 use futures::{Future, Stream};
@@ -28,11 +29,11 @@ impl Tentacle {
 
     pub fn stream_log<S: AsRef<str>>(
         &self,
-        log: S,
+        id: S,
     ) -> Box<dyn Stream<Item = String, Error = TentacleClientError>> {
         let tentacle = self.tentacles.first().unwrap();
-        let log_encoded = quote(log, b"").unwrap();
-        let url = format!("{}/api/v1/sources/{}/content", tentacle, log_encoded);
+        let id_encoded = quote(id, b"").unwrap();
+        let url = format!("{}/api/v1/sources/{}/content", tentacle, id_encoded);
         let req = client::get(url)
             .header("User-Agent", "Actix-web")
             .finish()
@@ -48,5 +49,40 @@ impl Tentacle {
             .flatten_stream();
         let lines = bytes.map(|b| String::from_utf8(b.to_vec()).unwrap());
         Box::new(lines)
+    }
+
+    fn query_tentacle(&self, tentacle: String, id: &String) -> LogStream {
+        let id_encoded = quote(id, b"").unwrap();
+        let url = format!("{}/api/v1/sources/{}/content", tentacle, id_encoded);
+        let req = client::get(url)
+            .header("User-Agent", "Actix-web")
+            .finish()
+            .unwrap()
+            .send()
+            .map_err(|_| TentacleClientError::ClientError);
+        let bytes = req
+            .map(|response| {
+                response
+                    .payload()
+                    .map_err(|_| TentacleClientError::ClientError)
+            })
+            .flatten_stream();
+        let lines = bytes
+            .map(|b| String::from_utf8(b.to_vec()).unwrap())
+            .map_err(|_| LogMergeError::DefaultError);
+        Box::new(lines)
+    }
+
+    pub fn stream_logs(
+        &self,
+        id: &String,
+    ) -> Box<dyn Stream<Item = String, Error = TentacleClientError>> {
+        let streams: Vec<LogStream> = self
+            .tentacles
+            .clone()
+            .into_iter()
+            .map(|t| self.query_tentacle(t, id))
+            .collect();
+        Box::new(LogMerge::new(streams).map_err(|_| TentacleClientError::ClientError))
     }
 }
