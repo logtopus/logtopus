@@ -16,8 +16,8 @@ jobs:
 
     steps:
       - checkout
-      - restore_cache:
-          key: logtopus-cache
+      # - restore_cache:
+      #     key: logtopus-cache
       # - run:
       #     name: Check formatting
       #     command: |
