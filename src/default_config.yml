@@ -1,0 +1,6 @@
+http.bind.port: 8081
+http.bind.ip: 127.0.0.1
+
+tentacles: []
+  # - http://host1:8080
+  # - http://host2:8080
