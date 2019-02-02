@@ -1,0 +1,5 @@
+http.bind.port: 28081
+
+tentacles:
+  - http://server-1:8080
+  - http://server-2:8080
