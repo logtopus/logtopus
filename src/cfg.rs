@@ -31,3 +31,45 @@ pub fn read_config<S: AsRef<str>>(
 
     Ok(settings)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::cfg;
+
+    #[test]
+    fn test_read_config() {
+        let settings = cfg::read_config(&Some("tests/test.yml")).unwrap();
+
+        assert_eq!(28081, settings.get_int("http.bind.port").unwrap());
+        assert_eq!("127.0.0.1", settings.get_str("http.bind.ip").unwrap());
+
+        let tentacles: Vec<String> = settings
+            .get_array("tentacles")
+            .unwrap()
+            .into_iter()
+            .map(|v| v.into_str().unwrap())
+            .collect();
+
+        assert_eq!(
+            vec!["http://server-1:8080", "http://server-2:8080"],
+            tentacles
+        );
+    }
+
+    #[test]
+    fn test_read_default_config() {
+        let settings = cfg::read_config::<String>(&None).unwrap();
+
+        assert_eq!(8081, settings.get_int("http.bind.port").unwrap());
+        assert_eq!("127.0.0.1", settings.get_str("http.bind.ip").unwrap());
+
+        let tentacles: Vec<String> = settings
+            .get_array("tentacles")
+            .unwrap()
+            .into_iter()
+            .map(|v| v.into_str().unwrap())
+            .collect();
+
+        assert!(tentacles.is_empty());
+    }
+}
