@@ -16,8 +16,8 @@ jobs:
 
     steps:
       - checkout
-      # - restore_cache:
-      #     key: logtopus-cache
+      - restore_cache:
+          key: logtopus-cache
       # - run:
       #     name: Check formatting
       #     command: |
@@ -36,7 +36,7 @@ jobs:
           name: Test
           command: cargo test
       - run:
-          name: Test
+          name: Build
           command: cargo build --release
       - store_artifacts:
           path: target/release/logtopus
