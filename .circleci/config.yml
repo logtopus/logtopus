@@ -7,8 +7,8 @@ jobs:
       # your own using the Dockerfile provided below
       # and replace here. I put my own image here for
       # the example.
-      # - image: circleci/rust:latest
-      - image: kodemaniak/centos-5-rust
+      - image: circleci/rust:latest
+      # - image: kodemaniak/centos-5-rust
 
     # environment:
     #   # Set your codecov token if your repository is private.
@@ -35,7 +35,7 @@ jobs:
       #     command: cargo build
       - run:
           name: Test
-          command: cargo test
+          command: cargo test --release
       - run:
           name: Build
           command: cargo build --release
