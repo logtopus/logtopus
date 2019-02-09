@@ -117,7 +117,6 @@ impl Stream for LogMerge {
                 _ => {}
             }
         }
-        // TODO: After delivering a line, figure out which source needs to be polled. Maybe store metadata with each line about source idx.
         match self.state() {
             SourceState::Delivered => {
                 // println!("Deliver!");

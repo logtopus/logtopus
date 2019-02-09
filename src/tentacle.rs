@@ -55,7 +55,8 @@ impl Tentacle {
         let id_encoded = quote(id, b"").unwrap();
         let url = format!("{}/api/v1/sources/{}/content", tentacle, id_encoded);
         let req = client::get(url)
-            .header("User-Agent", "Actix-web")
+            .header("User-Agent", "logtopus")
+            .header("Accept", "text/plain")
             .finish()
             .unwrap()
             .send()
