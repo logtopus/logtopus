@@ -1,6 +1,5 @@
 use futures::Async::*;
 use futures::{Poll, Stream};
-use log::*;
 use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Display;
@@ -42,7 +41,7 @@ impl LogMerge {
     pub fn new(sources: Vec<LogStream>) -> LogMerge {
         let num_sources = sources.len();
         let mut source_state = Vec::with_capacity(sources.len());
-        for i in 0..sources.len() {
+        for _ in 0..sources.len() {
             source_state.push(SourceState::NeedsPoll);
         }
         LogMerge {
@@ -74,25 +73,20 @@ impl LogMerge {
     }
 
     fn poll_source(&mut self, source_idx: usize) -> Result<(), LogMergeError> {
-        // println!("poll source {}", source_idx);
         match self.sources[source_idx].poll() {
             Ok(Ready(Some(line))) => {
-                // println!("line");
                 let log_line = LogLine { source_idx, line };
                 self.insert_into_buffer(log_line);
                 self.source_state[source_idx] = SourceState::Delivered;
             }
             Ok(Ready(None)) => {
-                // println!("finished");
                 self.source_state[source_idx] = SourceState::Finished;
                 self.finished += 1;
             }
             Ok(NotReady) => {
-                // println!("not ready");
                 self.source_state[source_idx] = SourceState::NeedsPoll;
             }
-            Err(e) => {
-                // error!("Poll failed: {}", e);
+            Err(_) => {
                 return Err(LogMergeError::DefaultError);
             }
         }
@@ -109,7 +103,6 @@ impl Stream for LogMerge {
         for s in 0..self.source_state.len() {
             match self.source_state[s] {
                 SourceState::NeedsPoll => {
-                    // println!("Polling source {}", s);
                     if let Err(err) = self.poll_source(s) {
                         return Err(err);
                     }
@@ -119,26 +112,19 @@ impl Stream for LogMerge {
         }
         match self.state() {
             SourceState::Delivered => {
-                // println!("Deliver!");
                 let log_line = self.next_line();
                 self.source_state[log_line.source_idx] = SourceState::NeedsPoll;
                 Ok(Ready(Some(log_line.line)))
             }
-            SourceState::Finished => {
-                // println!("Merge finished!");
-                Ok(Ready(None))
-            }
-            SourceState::NeedsPoll => {
-                // println!("Polling...");
-                Ok(NotReady)
-            }
+            SourceState::Finished => Ok(Ready(None)),
+            SourceState::NeedsPoll => Ok(NotReady),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::log_merge::{LogMerge, LogMergeError, LogStream};
+    use crate::log_merge::{LogMerge, LogStream};
     use futures::stream::{empty, iter_ok, once};
     use futures::Stream;
     use tokio::runtime::current_thread::Runtime;
