@@ -32,9 +32,9 @@ struct BufferEntry {
 }
 
 pub struct LogMerge {
+    running_sources: usize,
     sources: Vec<LogStream>,
     source_state: Vec<SourceState>,
-    finished: usize,
     buffer: VecDeque<BufferEntry>,
 }
 
@@ -46,21 +46,10 @@ impl LogMerge {
             source_state.push(SourceState::NeedsPoll);
         }
         LogMerge {
+            running_sources: num_sources,
             sources: sources,
             source_state: source_state,
-            finished: 0,
             buffer: VecDeque::with_capacity(num_sources),
-        }
-    }
-
-    fn state(&self) -> SourceState {
-        let unfinished = self.sources.len() - self.finished;
-        if unfinished == 0 {
-            SourceState::Finished
-        } else if unfinished == self.buffer.len() {
-            SourceState::Delivered
-        } else {
-            SourceState::NeedsPoll
         }
     }
 
@@ -84,7 +73,7 @@ impl LogMerge {
             }
             Ok(Ready(None)) => {
                 self.source_state[source_idx] = SourceState::Finished;
-                self.finished += 1;
+                self.running_sources -= 1;
             }
             Ok(NotReady) => {
                 self.source_state[source_idx] = SourceState::NeedsPoll;
@@ -113,14 +102,14 @@ impl Stream for LogMerge {
                 _ => {}
             }
         }
-        match self.state() {
-            SourceState::Delivered => {
-                let entry = self.next_entry();
-                self.source_state[entry.source_idx] = SourceState::NeedsPoll;
-                Ok(Ready(Some(entry.log_line)))
-            }
-            SourceState::Finished => Ok(Ready(None)),
-            SourceState::NeedsPoll => Ok(NotReady),
+        if self.running_sources == 0 {
+            Ok(Ready(None))
+        } else if self.running_sources == self.buffer.len() {
+            let entry = self.next_entry();
+            self.source_state[entry.source_idx] = SourceState::NeedsPoll;
+            Ok(Ready(Some(entry.log_line)))
+        } else {
+            Ok(NotReady)
         }
     }
 }
@@ -195,6 +184,6 @@ mod tests {
         let merge = LogMerge::new(sources);
         let mut rt = Runtime::new().unwrap();
         let result = rt.block_on(merge.collect()).unwrap();
-        assert_eq!(vec![l11, l21, l31, l12, l22, l32, l13, l33, l34], result);
+        assert_eq!(vec![l21, l11, l31, l32, l12, l33, l22, l13, l34], result);
     }
 }
