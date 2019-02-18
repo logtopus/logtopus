@@ -1,7 +1,8 @@
-use crate::log_merge::{LogMerge, LogMergeError, LogStream};
+use crate::log_merge::{LogMerge, LogStream, LogStreamError};
 use actix_web::{client, HttpMessage};
 use config::Config;
 use futures::{Future, Stream};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use urlparse::quote;
 
@@ -12,6 +13,12 @@ pub enum TentacleClientError {
 
 pub struct Tentacle {
     tentacles: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct TentacleLogLine {
+    pub timestamp: i64,
+    pub message: String,
 }
 
 impl Tentacle {
@@ -32,7 +39,7 @@ impl Tentacle {
         let url = format!("{}/api/v1/sources/{}/content", tentacle, id_encoded);
         let req = client::get(url)
             .header("User-Agent", "logtopus")
-            .header("Accept", "text/plain")
+            .header("Accept", "application/json")
             .finish()
             .unwrap()
             .send()
@@ -45,15 +52,18 @@ impl Tentacle {
             })
             .flatten_stream();
         let lines = bytes
-            .map(|b| String::from_utf8(b.to_vec()).unwrap())
-            .map_err(|_| LogMergeError::DefaultError);
+            .map(|b| {
+                let line = String::from_utf8(b.to_vec()).unwrap();
+                serde_json::from_str(&line).unwrap()
+            })
+            .map_err(|_| LogStreamError::DefaultError);
         Box::new(lines)
     }
 
     pub fn stream_logs(
         &self,
         id: &String,
-    ) -> Box<dyn Stream<Item = String, Error = TentacleClientError>> {
+    ) -> Box<dyn Stream<Item = TentacleLogLine, Error = TentacleClientError>> {
         let streams: Vec<LogStream> = self
             .tentacles
             .clone()

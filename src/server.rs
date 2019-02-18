@@ -35,7 +35,7 @@ fn stream_tentacle(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpR
     let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok().streaming(
         log_stream
-            .map(|s| Bytes::from(s))
+            .map(|log_line| Bytes::from(serde_json::to_vec(&log_line).unwrap()))
             .map_err(|_| actix_web::error::PayloadError::Incomplete),
     )
 }

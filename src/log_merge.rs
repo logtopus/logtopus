@@ -1,3 +1,4 @@
+use crate::tentacle::TentacleLogLine;
 use futures::Async::*;
 use futures::{Poll, Stream};
 use std::collections::VecDeque;
@@ -6,17 +7,17 @@ use std::fmt::Display;
 use std::vec::Vec;
 
 #[derive(Debug)]
-pub enum LogMergeError {
+pub enum LogStreamError {
     DefaultError,
 }
 
-impl Display for LogMergeError {
+impl Display for LogStreamError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Failed stream.")
     }
 }
 
-pub type LogStream = Box<Stream<Item = String, Error = LogMergeError>>;
+pub type LogStream = Box<Stream<Item = TentacleLogLine, Error = LogStreamError>>;
 
 #[derive(PartialEq)]
 enum SourceState {
@@ -25,16 +26,16 @@ enum SourceState {
     Finished,
 }
 
-struct LogLine {
+struct BufferEntry {
+    log_line: TentacleLogLine,
     source_idx: usize,
-    line: String,
 }
 
 pub struct LogMerge {
     sources: Vec<LogStream>,
     source_state: Vec<SourceState>,
     finished: usize,
-    buffer: VecDeque<LogLine>,
+    buffer: VecDeque<BufferEntry>,
 }
 
 impl LogMerge {
@@ -53,7 +54,6 @@ impl LogMerge {
     }
 
     fn state(&self) -> SourceState {
-        // println!("finished: {} of {}", self.finished, self.sources.len());
         let unfinished = self.sources.len() - self.finished;
         if unfinished == 0 {
             SourceState::Finished
@@ -64,19 +64,22 @@ impl LogMerge {
         }
     }
 
-    fn next_line(&mut self) -> LogLine {
+    fn next_entry(&mut self) -> BufferEntry {
         self.buffer.pop_front().unwrap()
     }
 
-    fn insert_into_buffer(&mut self, line: LogLine) {
+    fn insert_into_buffer(&mut self, log_line: TentacleLogLine, source_idx: usize) {
+        let line = BufferEntry {
+            log_line,
+            source_idx,
+        };
         self.buffer.push_back(line);
     }
 
-    fn poll_source(&mut self, source_idx: usize) -> Result<(), LogMergeError> {
+    fn poll_source(&mut self, source_idx: usize) -> Result<(), LogStreamError> {
         match self.sources[source_idx].poll() {
             Ok(Ready(Some(line))) => {
-                let log_line = LogLine { source_idx, line };
-                self.insert_into_buffer(log_line);
+                self.insert_into_buffer(line, source_idx);
                 self.source_state[source_idx] = SourceState::Delivered;
             }
             Ok(Ready(None)) => {
@@ -87,7 +90,7 @@ impl LogMerge {
                 self.source_state[source_idx] = SourceState::NeedsPoll;
             }
             Err(_) => {
-                return Err(LogMergeError::DefaultError);
+                return Err(LogStreamError::DefaultError);
             }
         }
         Ok(())
@@ -95,8 +98,8 @@ impl LogMerge {
 }
 
 impl Stream for LogMerge {
-    type Item = String;
-    type Error = LogMergeError;
+    type Item = TentacleLogLine;
+    type Error = LogStreamError;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         // println!("poll");
@@ -112,9 +115,9 @@ impl Stream for LogMerge {
         }
         match self.state() {
             SourceState::Delivered => {
-                let log_line = self.next_line();
-                self.source_state[log_line.source_idx] = SourceState::NeedsPoll;
-                Ok(Ready(Some(log_line.line)))
+                let entry = self.next_entry();
+                self.source_state[entry.source_idx] = SourceState::NeedsPoll;
+                Ok(Ready(Some(entry.log_line)))
             }
             SourceState::Finished => Ok(Ready(None)),
             SourceState::NeedsPoll => Ok(NotReady),
@@ -125,14 +128,22 @@ impl Stream for LogMerge {
 #[cfg(test)]
 mod tests {
     use crate::log_merge::{LogMerge, LogStream};
+    use crate::tentacle::TentacleLogLine;
     use futures::stream::{empty, iter_ok, once};
     use futures::Stream;
     use tokio::runtime::current_thread::Runtime;
 
+    fn line_at(timestamp: i64, line: &str) -> TentacleLogLine {
+        TentacleLogLine {
+            timestamp: timestamp,
+            message: line.to_string(),
+        }
+    }
+
     #[test]
     fn test_new() {
-        let s1: LogStream = Box::new(once(Ok(String::from("s1"))));
-        let s2: LogStream = Box::new(once(Ok(String::from("s2"))));
+        let s1: LogStream = Box::new(once(Ok(line_at(0, "s1"))));
+        let s2: LogStream = Box::new(once(Ok(line_at(1, "s2"))));
         let sources = vec![s1, s2];
         let merge = LogMerge::new(sources);
         assert!(merge.sources.len() == 2);
@@ -151,59 +162,39 @@ mod tests {
 
     #[test]
     fn test_single_stream() {
-        let s1: LogStream = Box::new(iter_ok(vec![String::from("s11"), String::from("s12")]));
+        let l1 = line_at(0, "s1");
+        let l2 = line_at(1, "s1");
+        let s1: LogStream = Box::new(iter_ok(vec![l1.clone(), l2.clone()]));
         let sources = vec![s1];
         let merge = LogMerge::new(sources);
         let mut rt = Runtime::new().unwrap();
         let result = rt.block_on(merge.collect()).unwrap();
-        assert_eq!(vec![String::from("s11"), String::from("s12")], result);
+        assert_eq!(vec![l1, l2], result);
     }
 
     #[test]
-    fn test_multiple_streams_same_length() {
-        let s1: LogStream = Box::new(iter_ok(vec![String::from("s11"), String::from("s12")]));
-        let s2: LogStream = Box::new(iter_ok(vec![String::from("s21"), String::from("s22")]));
-        let s3: LogStream = Box::new(iter_ok(vec![String::from("s31"), String::from("s32")]));
-        let sources = vec![s1, s2, s3];
-        let merge = LogMerge::new(sources);
-        let mut rt = Runtime::new().unwrap();
-        let result = rt.block_on(merge.collect()).unwrap();
-        assert_eq!(
-            vec![
-                String::from("s11"),
-                String::from("s21"),
-                String::from("s31"),
-                String::from("s12"),
-                String::from("s22"),
-                String::from("s32")
-            ],
-            result
-        );
-    }
-
-    #[test]
-    fn test_multiple_streams_varying_length() {
-        let s1: LogStream = Box::new(iter_ok(vec![String::from("s11"), String::from("s12")]));
-        let s2: LogStream = Box::new(iter_ok(vec![String::from("s21")]));
+    fn test_multiple_streams() {
+        let l11 = line_at(100, "s11");
+        let l12 = line_at(300, "s12");
+        let l13 = line_at(520, "s13");
+        let l21 = line_at(90, "s21");
+        let l22 = line_at(430, "s22");
+        let l31 = line_at(120, "s31");
+        let l32 = line_at(120, "s32");
+        let l33 = line_at(320, "s33");
+        let l34 = line_at(520, "s34");
+        let s1: LogStream = Box::new(iter_ok(vec![l11.clone(), l12.clone(), l13.clone()]));
+        let s2: LogStream = Box::new(iter_ok(vec![l21.clone(), l22.clone()]));
         let s3: LogStream = Box::new(iter_ok(vec![
-            String::from("s31"),
-            String::from("s32"),
-            String::from("s33"),
+            l31.clone(),
+            l32.clone(),
+            l33.clone(),
+            l34.clone(),
         ]));
         let sources = vec![s1, s2, s3];
         let merge = LogMerge::new(sources);
         let mut rt = Runtime::new().unwrap();
         let result = rt.block_on(merge.collect()).unwrap();
-        assert_eq!(
-            vec![
-                String::from("s11"),
-                String::from("s21"),
-                String::from("s31"),
-                String::from("s12"),
-                String::from("s32"),
-                String::from("s33")
-            ],
-            result
-        );
+        assert_eq!(vec![l11, l21, l31, l12, l22, l32, l13, l33, l34], result);
     }
 }
