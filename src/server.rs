@@ -3,6 +3,7 @@ extern crate actix_web;
 
 use crate::tentacle::Tentacle;
 use actix_web::{HttpResponse, State};
+use bytes::BufMut;
 use bytes::Bytes;
 use config;
 use config::Config;
@@ -35,7 +36,11 @@ fn stream_tentacle(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpR
     let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok().streaming(
         log_stream
-            .map(|log_line| Bytes::from(serde_json::to_vec(&log_line).unwrap()))
+            .map(move |log_line| {
+                let mut json = serde_json::to_vec(&log_line).unwrap();
+                json.put_u8('\n' as u8);
+                Bytes::from(json)
+            })
             .map_err(|_| actix_web::error::PayloadError::Incomplete),
     )
 }

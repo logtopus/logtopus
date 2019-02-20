@@ -26,6 +26,7 @@ enum SourceState {
     Finished,
 }
 
+#[derive(Debug)]
 struct BufferEntry {
     log_line: TentacleLogLine,
     source_idx: usize,
@@ -35,7 +36,7 @@ pub struct LogMerge {
     running_sources: usize,
     sources: Vec<LogStream>,
     source_state: Vec<SourceState>,
-    buffer: VecDeque<BufferEntry>,
+    buffer: Vec<BufferEntry>,
 }
 
 impl LogMerge {
@@ -49,12 +50,14 @@ impl LogMerge {
             running_sources: num_sources,
             sources: sources,
             source_state: source_state,
-            buffer: VecDeque::with_capacity(num_sources),
+            buffer: Vec::with_capacity(num_sources),
         }
     }
 
     fn next_entry(&mut self) -> BufferEntry {
-        self.buffer.pop_front().unwrap()
+        // TODO: better error handling, remove_item -> rust nightly / 2019-02-20
+        let e = self.buffer.remove(0);
+        return e;
     }
 
     fn insert_into_buffer(&mut self, log_line: TentacleLogLine, source_idx: usize) {
@@ -62,7 +65,15 @@ impl LogMerge {
             log_line,
             source_idx,
         };
-        self.buffer.push_back(line);
+        let buffer_size = self.buffer.len();
+        let mut insert_at = 0;
+        for idx in 0..buffer_size {
+            if line.log_line.timestamp < self.buffer[idx].log_line.timestamp {
+                break;
+            }
+            insert_at += 1;
+        }
+        self.buffer.insert(insert_at, line);
     }
 
     fn poll_source(&mut self, source_idx: usize) -> Result<(), LogStreamError> {
@@ -91,7 +102,6 @@ impl Stream for LogMerge {
     type Error = LogStreamError;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        // println!("poll");
         for s in 0..self.source_state.len() {
             match self.source_state[s] {
                 SourceState::NeedsPoll => {
