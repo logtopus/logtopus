@@ -11,25 +11,25 @@ pub enum TentacleClientError {
     ClientError,
 }
 
-pub struct Tentacle {
-    tentacles: Vec<String>,
-}
-
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TentacleLogLine {
     pub timestamp: i64,
     pub message: String,
 }
 
-impl Tentacle {
-    pub fn from_settings(settings: Arc<Config>) -> Tentacle {
+pub struct TentacleClient {
+    tentacles: Vec<String>,
+}
+
+impl TentacleClient {
+    pub fn from_settings(settings: Arc<Config>) -> TentacleClient {
         let tentacles = settings
             .get_array("tentacles")
             .unwrap()
             .into_iter()
             .map(|v| v.into_str().unwrap())
             .collect();
-        Tentacle {
+        TentacleClient {
             tentacles: tentacles,
         }
     }

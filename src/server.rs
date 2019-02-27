@@ -1,7 +1,7 @@
 extern crate actix;
 extern crate actix_web;
 
-use crate::tentacle::Tentacle;
+use crate::tentacle::TentacleClient;
 use actix_web::{HttpResponse, State};
 use bytes::BufMut;
 use bytes::Bytes;
@@ -45,7 +45,7 @@ pub fn start_server(settings: Arc<Config>) {
     println!("Started http server: {:?}", addr);
 }
 
-fn stream_json(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpResponse {
+fn stream_json(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
     let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok()
         .header("Content-Type", "application/json")
@@ -60,7 +60,7 @@ fn stream_json(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpRespo
         )
 }
 
-fn stream_text(id: actix_web::Path<String>, state: State<Tentacle>) -> HttpResponse {
+fn stream_text(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
     let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok()
         .header("Content-Type", "text/plain")
@@ -96,7 +96,7 @@ impl ServerStateFactory {
         ServerStateFactory { settings: settings }
     }
 
-    fn create_state(&self) -> Tentacle {
-        Tentacle::from_settings(self.settings.clone())
+    fn create_state(&self) -> TentacleClient {
+        TentacleClient::from_settings(self.settings.clone())
     }
 }
