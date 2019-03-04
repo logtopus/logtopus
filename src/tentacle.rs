@@ -1,14 +1,38 @@
 use crate::log_merge::{LogMerge, LogStream, LogStreamError};
 use actix_web::{client, HttpMessage};
-use config::Config;
+use config::{Config, Value};
 use futures::{Future, Stream};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use urlparse::quote;
 
+const DEFAULT_PORT: i64 = 8080;
+const DEFAULT_PROTOCOL: &'static str = "http";
+
 #[derive(Debug)]
 pub enum TentacleClientError {
     ClientError,
+}
+
+#[derive(Debug)]
+pub enum TentacleConfigError {
+    NoTableError,
+    NoHostSpecified,
+    IllegalHostError,
+    IllegalPortError,
+    IllegalProtocolError,
+}
+
+pub struct TentacleInfo {
+    host: String,
+    port: i64,
+    protocol: String,
+}
+
+impl TentacleInfo {
+    pub fn uri(&self) -> String {
+        format!("{}://{}:{}", self.protocol, self.host, self.port)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -18,20 +42,53 @@ pub struct TentacleLogLine {
 }
 
 pub struct TentacleClient {
-    tentacles: Vec<String>,
+    tentacles: Vec<TentacleInfo>,
 }
 
 impl TentacleClient {
-    pub fn from_settings(settings: Arc<Config>) -> TentacleClient {
-        let tentacles = settings
-            .get_array("tentacles")
-            .unwrap()
-            .into_iter()
-            .map(|v| v.into_str().unwrap())
-            .collect();
-        TentacleClient {
-            tentacles: tentacles,
+    fn parse_tentacle(v: Value) -> Result<TentacleInfo, TentacleConfigError> {
+        match v.into_table() {
+            Ok(table) => {
+                let host = table
+                    .get("host")
+                    .cloned()
+                    .ok_or(TentacleConfigError::NoHostSpecified)?
+                    .into_str()
+                    .map_err(|_| TentacleConfigError::IllegalHostError)?;
+                let port = table
+                    .get("port")
+                    .map(|v| {
+                        v.clone()
+                            .into_int()
+                            .map_err(|_| TentacleConfigError::IllegalPortError)
+                    })
+                    .unwrap_or(Ok(DEFAULT_PORT))?;
+                let protocol = table
+                    .get("protocol")
+                    .map(|v| {
+                        v.clone()
+                            .into_str()
+                            .map_err(|_| TentacleConfigError::IllegalProtocolError)
+                    })
+                    .unwrap_or(Ok(String::from(DEFAULT_PROTOCOL)))?;
+                Ok(TentacleInfo {
+                    host,
+                    port,
+                    protocol,
+                })
+            }
+            Err(e) => Err(TentacleConfigError::NoTableError),
         }
+    }
+
+    pub fn from_settings(settings: Arc<Config>) -> Result<TentacleClient, TentacleConfigError> {
+        let tentacles: Result<Vec<TentacleInfo>, TentacleConfigError> = settings
+            .get_array("tentacles")
+            .unwrap() // we unwrap here as there is always an empty array defined in default config
+            .into_iter()
+            .map(|v| TentacleClient::parse_tentacle(v))
+            .collect();
+        tentacles.map(|infos| TentacleClient { tentacles: infos })
     }
 
     fn query_tentacle(&self, tentacle: String, id: &String) -> LogStream {
@@ -66,7 +123,9 @@ impl TentacleClient {
     ) -> Box<dyn Stream<Item = TentacleLogLine, Error = TentacleClientError>> {
         let streams: Vec<LogStream> = self
             .tentacles
-            .clone()
+            .as_slice()
+            .into_iter()
+            .map(|t| t.uri())
             .into_iter()
             .map(|t| self.query_tentacle(t, id))
             .collect();

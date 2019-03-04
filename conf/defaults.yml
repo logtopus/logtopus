@@ -2,6 +2,13 @@ http.bind.port: 8081
 http.bind.ip: 127.0.0.1
 
 tentacles:
-  - http://localhost:8080
-  # - http://localhost:8082
-  # - http://localhost:8083
+   - host: localhost
+     # default port 8080 if not specified
+     # port: 8080
+     # currently supported protocols: http, https
+     # protocol: http
+  # - host: other host
+      # default port 8080 if not specified
+      # port: 8080
+      # currently supported protocols: http, https
+      # protocol: http

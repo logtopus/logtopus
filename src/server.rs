@@ -1,7 +1,7 @@
 extern crate actix;
 extern crate actix_web;
 
-use crate::tentacle::TentacleClient;
+use crate::tentacle::{TentacleClient, TentacleConfigError};
 use actix_web::{HttpResponse, State};
 use bytes::BufMut;
 use bytes::Bytes;
@@ -19,7 +19,7 @@ pub fn start_server(settings: Arc<Config>) {
     let state_factory = ServerStateFactory::from_settings(settings);
 
     actix_web::server::new(move || {
-        actix_web::App::with_state(state_factory.create_state())
+        actix_web::App::with_state(state_factory.create_state().unwrap())
             // enable logger
             .middleware(actix_web::middleware::Logger::default())
             .prefix("/api/v1")
@@ -96,7 +96,7 @@ impl ServerStateFactory {
         ServerStateFactory { settings: settings }
     }
 
-    fn create_state(&self) -> TentacleClient {
+    fn create_state(&self) -> Result<TentacleClient, TentacleConfigError> {
         TentacleClient::from_settings(self.settings.clone())
     }
 }
