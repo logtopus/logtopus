@@ -91,7 +91,7 @@ impl TentacleClient {
                     protocol,
                 })
             }
-            Err(e) => Err(TentacleConfigError::NoTableError),
+            Err(_e) => Err(TentacleConfigError::NoTableError),
         }
     }
 
