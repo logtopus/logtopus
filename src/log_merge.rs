@@ -1,7 +1,6 @@
-use crate::tentacle::TentacleLogLine;
+use crate::tentacle::LogLine;
 use futures::Async::*;
 use futures::{Poll, Stream};
-use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Display;
 use std::vec::Vec;
@@ -17,7 +16,7 @@ impl Display for LogStreamError {
     }
 }
 
-pub type LogStream = Box<Stream<Item = TentacleLogLine, Error = LogStreamError>>;
+pub type LogStream = Box<Stream<Item = LogLine, Error = LogStreamError>>;
 
 #[derive(PartialEq)]
 enum SourceState {
@@ -28,7 +27,7 @@ enum SourceState {
 
 #[derive(Debug)]
 struct BufferEntry {
-    log_line: TentacleLogLine,
+    log_line: LogLine,
     source_idx: usize,
 }
 
@@ -60,7 +59,7 @@ impl LogMerge {
         return e;
     }
 
-    fn insert_into_buffer(&mut self, log_line: TentacleLogLine, source_idx: usize) {
+    fn insert_into_buffer(&mut self, log_line: LogLine, source_idx: usize) {
         let line = BufferEntry {
             log_line,
             source_idx,
@@ -68,7 +67,7 @@ impl LogMerge {
         let buffer_size = self.buffer.len();
         let mut insert_at = 0;
         for idx in 0..buffer_size {
-            if line.log_line.timestamp < self.buffer[idx].log_line.timestamp {
+            if line.log_line.timestamp() < self.buffer[idx].log_line.timestamp() {
                 break;
             }
             insert_at += 1;
@@ -98,7 +97,7 @@ impl LogMerge {
 }
 
 impl Stream for LogMerge {
-    type Item = TentacleLogLine;
+    type Item = LogLine;
     type Error = LogStreamError;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -127,15 +126,20 @@ impl Stream for LogMerge {
 #[cfg(test)]
 mod tests {
     use crate::log_merge::{LogMerge, LogStream};
-    use crate::tentacle::TentacleLogLine;
+    use crate::tentacle::{LogLine, TentacleLogLine};
     use futures::stream::{empty, iter_ok, once};
     use futures::Stream;
     use tokio::runtime::current_thread::Runtime;
 
-    fn line_at(timestamp: i64, line: &str) -> TentacleLogLine {
-        TentacleLogLine {
+    fn line_at(timestamp: i64, line: &str) -> LogLine {
+        let tl = TentacleLogLine {
             timestamp: timestamp,
             message: line.to_string(),
+        };
+        LogLine {
+            log_line: tl,
+            id: String::from("system-syslog"),
+            source: String::from("node1"),
         }
     }
 

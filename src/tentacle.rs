@@ -23,6 +23,7 @@ pub enum TentacleConfigError {
     IllegalProtocolError,
 }
 
+#[derive(Clone)]
 pub struct TentacleInfo {
     host: String,
     port: i64,
@@ -39,6 +40,19 @@ impl TentacleInfo {
 pub struct TentacleLogLine {
     pub timestamp: i64,
     pub message: String,
+}
+
+#[derive(Clone, Serialize, Debug, PartialEq)]
+pub struct LogLine {
+    pub log_line: TentacleLogLine,
+    pub id: String,
+    pub source: String,
+}
+
+impl LogLine {
+    pub fn timestamp(&self) -> i64 {
+        self.log_line.timestamp
+    }
 }
 
 pub struct TentacleClient {
@@ -91,9 +105,9 @@ impl TentacleClient {
         tentacles.map(|infos| TentacleClient { tentacles: infos })
     }
 
-    fn query_tentacle(&self, tentacle: String, id: &String) -> LogStream {
-        let id_encoded = quote(id, b"").unwrap();
-        let url = format!("{}/api/v1/sources/{}/content", tentacle, id_encoded);
+    fn query_tentacle(&self, tentacle: TentacleInfo, id: String) -> LogStream {
+        let id_encoded = quote(&id, b"").unwrap();
+        let url = format!("{}/api/v1/sources/{}/content", tentacle.uri(), id_encoded);
         let req = client::get(url)
             .header("User-Agent", "logtopus")
             .header("Accept", "application/json")
@@ -109,9 +123,14 @@ impl TentacleClient {
             })
             .flatten_stream();
         let lines = bytes
-            .map(|b| {
+            .map(move |b| {
                 let line = String::from_utf8(b.to_vec()).unwrap();
-                serde_json::from_str(&line).unwrap()
+                let log_line = serde_json::from_str(&line).unwrap();
+                LogLine {
+                    log_line: log_line,
+                    id: id.clone(),
+                    source: tentacle.host.clone(),
+                }
             })
             .map_err(|_| LogStreamError::DefaultError);
         Box::new(lines)
@@ -119,15 +138,13 @@ impl TentacleClient {
 
     pub fn stream_logs(
         &self,
-        id: &String,
-    ) -> Box<dyn Stream<Item = TentacleLogLine, Error = TentacleClientError>> {
+        id: String,
+    ) -> Box<dyn Stream<Item = LogLine, Error = TentacleClientError>> {
         let streams: Vec<LogStream> = self
             .tentacles
-            .as_slice()
+            .clone()
             .into_iter()
-            .map(|t| t.uri())
-            .into_iter()
-            .map(|t| self.query_tentacle(t, id))
+            .map(|t| self.query_tentacle(t.clone(), id.clone()))
             .collect();
         Box::new(LogMerge::new(streams).map_err(|_| TentacleClientError::ClientError))
     }

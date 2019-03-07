@@ -46,7 +46,7 @@ pub fn start_server(settings: Arc<Config>) {
 }
 
 fn stream_json(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
-    let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
+    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok()
         .header("Content-Type", "application/json")
         .streaming(
@@ -61,18 +61,18 @@ fn stream_json(id: actix_web::Path<String>, state: State<TentacleClient>) -> Htt
 }
 
 fn stream_text(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
-    let log_stream = state.stream_logs(&String::from_str(id.as_str()).unwrap());
+    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap());
     HttpResponse::Ok()
         .header("Content-Type", "text/plain")
         .streaming(
             log_stream
                 .map(move |log_line| {
                     let timestamp = NaiveDateTime::from_timestamp(
-                        log_line.timestamp / 1000,
-                        ((log_line.timestamp % 1000) * 1_000_000) as u32,
+                        log_line.timestamp() / 1000,
+                        ((log_line.timestamp() % 1000) * 1_000_000) as u32,
                     );
                     let ts_string = timestamp.format("%H:%M:%S.%3f %d-%m-%Y");
-                    let text_line = format!("{} {}\n", ts_string, log_line.message);
+                    let text_line = format!("{} {}\n", ts_string, log_line.log_line.message);
                     Bytes::from(text_line)
                 })
                 .map_err(|_| actix_web::error::PayloadError::Incomplete),
