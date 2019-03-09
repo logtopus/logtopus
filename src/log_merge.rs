@@ -67,7 +67,7 @@ impl LogMerge {
         let buffer_size = self.buffer.len();
         let mut insert_at = 0;
         for idx in 0..buffer_size {
-            if line.log_line.timestamp() < self.buffer[idx].log_line.timestamp() {
+            if line.log_line.timestamp < self.buffer[idx].log_line.timestamp {
                 break;
             }
             insert_at += 1;
@@ -132,12 +132,10 @@ mod tests {
     use tokio::runtime::current_thread::Runtime;
 
     fn line_at(timestamp: i64, line: &str) -> LogLine {
-        let tl = TentacleLogLine {
+        LogLine {
             timestamp: timestamp,
             message: line.to_string(),
-        };
-        LogLine {
-            log_line: tl,
+            loglevel: None,
             id: String::from("system-syslog"),
             source: String::from("node1"),
         }

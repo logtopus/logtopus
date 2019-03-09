@@ -2,15 +2,21 @@ extern crate actix;
 extern crate actix_web;
 
 use crate::tentacle::{TentacleClient, TentacleConfigError};
-use actix_web::{HttpResponse, State};
+use actix_web::{HttpResponse, Query, State};
 use bytes::BufMut;
 use bytes::Bytes;
 use chrono::NaiveDateTime;
 use config;
 use config::Config;
 use futures::Stream;
+use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::Arc;
+
+#[derive(Deserialize, Debug)]
+struct Filter {
+    loglevels: Option<String>,
+}
 
 pub fn start_server(settings: Arc<Config>) {
     let port = settings.get_int("http.bind.port").unwrap();
@@ -45,8 +51,12 @@ pub fn start_server(settings: Arc<Config>) {
     println!("Started http server: {:?}", addr);
 }
 
-fn stream_json(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
-    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap());
+fn stream_json(
+    id: actix_web::Path<String>,
+    filter: Query<Filter>,
+    state: State<TentacleClient>,
+) -> HttpResponse {
+    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap(), &filter.loglevels);
     HttpResponse::Ok()
         .header("Content-Type", "application/json")
         .streaming(
@@ -60,19 +70,23 @@ fn stream_json(id: actix_web::Path<String>, state: State<TentacleClient>) -> Htt
         )
 }
 
-fn stream_text(id: actix_web::Path<String>, state: State<TentacleClient>) -> HttpResponse {
-    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap());
+fn stream_text(
+    id: actix_web::Path<String>,
+    filter: Query<Filter>,
+    state: State<TentacleClient>,
+) -> HttpResponse {
+    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap(), &filter.loglevels);
     HttpResponse::Ok()
         .header("Content-Type", "text/plain")
         .streaming(
             log_stream
                 .map(move |log_line| {
                     let timestamp = NaiveDateTime::from_timestamp(
-                        log_line.timestamp() / 1000,
-                        ((log_line.timestamp() % 1000) * 1_000_000) as u32,
+                        log_line.timestamp / 1000,
+                        ((log_line.timestamp % 1000) * 1_000_000) as u32,
                     );
                     let ts_string = timestamp.format("%H:%M:%S.%3f %d-%m-%Y");
-                    let text_line = format!("{} {}\n", ts_string, log_line.log_line.message);
+                    let text_line = format!("{} {}\n", ts_string, log_line.message);
                     Bytes::from(text_line)
                 })
                 .map_err(|_| actix_web::error::PayloadError::Incomplete),

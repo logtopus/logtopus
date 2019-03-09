@@ -35,6 +35,7 @@ pub fn read_config<S: AsRef<str>>(
 #[cfg(test)]
 mod tests {
     use crate::cfg;
+    use crate::tentacle::*;
 
     #[test]
     fn test_read_config() {
@@ -43,15 +44,26 @@ mod tests {
         assert_eq!(28081, settings.get_int("http.bind.port").unwrap());
         assert_eq!("127.0.0.1", settings.get_str("http.bind.ip").unwrap());
 
-        let tentacles: Vec<String> = settings
+        let tentacles: Vec<TentacleInfo> = settings
             .get_array("tentacles")
             .unwrap()
             .into_iter()
-            .map(|v| v.into_str().unwrap())
+            .map(|v| TentacleClient::parse_tentacle(v).unwrap())
             .collect();
 
         assert_eq!(
-            vec!["http://server-1:8080", "http://server-2:8080"],
+            vec![
+                TentacleInfo {
+                    host: String::from("localhost"),
+                    port: 18080,
+                    protocol: String::from("http")
+                },
+                TentacleInfo {
+                    host: String::from("localhost"),
+                    port: 18081,
+                    protocol: String::from("http")
+                }
+            ],
             tentacles
         );
     }

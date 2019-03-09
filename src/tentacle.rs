@@ -23,11 +23,11 @@ pub enum TentacleConfigError {
     IllegalProtocolError,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TentacleInfo {
-    host: String,
-    port: i64,
-    protocol: String,
+    pub host: String,
+    pub port: i64,
+    pub protocol: String,
 }
 
 impl TentacleInfo {
@@ -40,19 +40,16 @@ impl TentacleInfo {
 pub struct TentacleLogLine {
     pub timestamp: i64,
     pub message: String,
+    pub loglevel: Option<String>,
 }
 
 #[derive(Clone, Serialize, Debug, PartialEq)]
 pub struct LogLine {
-    pub log_line: TentacleLogLine,
+    pub timestamp: i64,
+    pub message: String,
+    pub loglevel: Option<String>,
     pub id: String,
     pub source: String,
-}
-
-impl LogLine {
-    pub fn timestamp(&self) -> i64 {
-        self.log_line.timestamp
-    }
 }
 
 pub struct TentacleClient {
@@ -60,7 +57,7 @@ pub struct TentacleClient {
 }
 
 impl TentacleClient {
-    fn parse_tentacle(v: Value) -> Result<TentacleInfo, TentacleConfigError> {
+    pub fn parse_tentacle(v: Value) -> Result<TentacleInfo, TentacleConfigError> {
         match v.into_table() {
             Ok(table) => {
                 let host = table
@@ -105,9 +102,23 @@ impl TentacleClient {
         tentacles.map(|infos| TentacleClient { tentacles: infos })
     }
 
-    fn query_tentacle(&self, tentacle: TentacleInfo, id: String) -> LogStream {
+    fn query_tentacle(
+        &self,
+        tentacle: TentacleInfo,
+        id: String,
+        loglevels: &Option<String>,
+    ) -> LogStream {
         let id_encoded = quote(&id, b"").unwrap();
-        let url = format!("{}/api/v1/sources/{}/content", tentacle.uri(), id_encoded);
+        let filter = loglevels
+            .clone()
+            .map(|f| format!("?loglevels={}", f))
+            .unwrap_or(String::from(""));
+        let url = format!(
+            "{}/api/v1/sources/{}/content{}",
+            tentacle.uri(),
+            id_encoded,
+            filter
+        );
         let req = client::get(url)
             .header("User-Agent", "logtopus")
             .header("Accept", "application/json")
@@ -125,9 +136,11 @@ impl TentacleClient {
         let lines = bytes
             .map(move |b| {
                 let line = String::from_utf8(b.to_vec()).unwrap();
-                let log_line = serde_json::from_str(&line).unwrap();
+                let log_line: TentacleLogLine = serde_json::from_str(&line).unwrap();
                 LogLine {
-                    log_line: log_line,
+                    timestamp: log_line.timestamp,
+                    message: log_line.message,
+                    loglevel: log_line.loglevel,
                     id: id.clone(),
                     source: tentacle.host.clone(),
                 }
@@ -139,12 +152,13 @@ impl TentacleClient {
     pub fn stream_logs(
         &self,
         id: String,
+        loglevels: &Option<String>,
     ) -> Box<dyn Stream<Item = LogLine, Error = TentacleClientError>> {
         let streams: Vec<LogStream> = self
             .tentacles
             .clone()
             .into_iter()
-            .map(|t| self.query_tentacle(t.clone(), id.clone()))
+            .map(|t| self.query_tentacle(t.clone(), id.clone(), loglevels))
             .collect();
         Box::new(LogMerge::new(streams).map_err(|_| TentacleClientError::ClientError))
     }
