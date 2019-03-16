@@ -126,7 +126,7 @@ impl Stream for LogMerge {
 #[cfg(test)]
 mod tests {
     use crate::log_merge::{LogMerge, LogStream};
-    use crate::tentacle::{LogLine, TentacleLogLine};
+    use crate::tentacle::LogLine;
     use futures::stream::{empty, iter_ok, once};
     use futures::Stream;
     use tokio::runtime::current_thread::Runtime;

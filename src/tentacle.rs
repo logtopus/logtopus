@@ -106,13 +106,14 @@ impl TentacleClient {
         &self,
         tentacle: TentacleInfo,
         id: String,
+        from_ms: u64,
         loglevels: &Option<String>,
     ) -> LogStream {
         let id_encoded = quote(&id, b"").unwrap();
         let filter = loglevels
             .clone()
-            .map(|f| format!("?loglevels={}", f))
-            .unwrap_or(String::from(""));
+            .map(|f| format!("?from_ms={}&loglevels={}", from_ms, f))
+            .unwrap_or(format!("?from_ms={}", from_ms));
         let url = format!(
             "{}/api/v1/sources/{}/content{}",
             tentacle.uri(),
@@ -142,7 +143,7 @@ impl TentacleClient {
                     message: log_line.message,
                     loglevel: log_line.loglevel,
                     id: id.clone(),
-                    source: tentacle.host.clone(),
+                    source: format!("{}:{}", tentacle.host, tentacle.port),
                 }
             })
             .map_err(|_| LogStreamError::DefaultError);
@@ -152,13 +153,14 @@ impl TentacleClient {
     pub fn stream_logs(
         &self,
         id: String,
+        from_ms: u64,
         loglevels: &Option<String>,
     ) -> Box<dyn Stream<Item = LogLine, Error = TentacleClientError>> {
         let streams: Vec<LogStream> = self
             .tentacles
             .clone()
             .into_iter()
-            .map(|t| self.query_tentacle(t.clone(), id.clone(), loglevels))
+            .map(|t| self.query_tentacle(t.clone(), id.clone(), from_ms, loglevels))
             .collect();
         Box::new(LogMerge::new(streams).map_err(|_| TentacleClientError::ClientError))
     }

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 #[derive(Deserialize, Debug)]
 struct Filter {
+    from_ms: Option<u64>,
     loglevels: Option<String>,
 }
 
@@ -56,7 +57,11 @@ fn stream_json(
     filter: Query<Filter>,
     state: State<TentacleClient>,
 ) -> HttpResponse {
-    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap(), &filter.loglevels);
+    let log_stream = state.stream_logs(
+        String::from_str(id.as_str()).unwrap(),
+        filter.from_ms.unwrap_or(0),
+        &filter.loglevels,
+    );
     HttpResponse::Ok()
         .header("Content-Type", "application/json")
         .streaming(
@@ -75,7 +80,11 @@ fn stream_text(
     filter: Query<Filter>,
     state: State<TentacleClient>,
 ) -> HttpResponse {
-    let log_stream = state.stream_logs(String::from_str(id.as_str()).unwrap(), &filter.loglevels);
+    let log_stream = state.stream_logs(
+        String::from_str(id.as_str()).unwrap(),
+        filter.from_ms.unwrap_or(0),
+        &filter.loglevels,
+    );
     HttpResponse::Ok()
         .header("Content-Type", "text/plain")
         .streaming(
