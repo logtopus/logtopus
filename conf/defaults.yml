@@ -7,6 +7,8 @@ tentacles:
      # port: 8080
      # currently supported protocols: http, https
      # protocol: http
+     # in case the hostname is not appropriate you can specify an alias for a tentacle
+     # alias: some_name
   # - host: other host
       # default port 8080 if not specified
       # port: 8080

@@ -21,10 +21,12 @@ pub enum TentacleConfigError {
     IllegalHostError,
     IllegalPortError,
     IllegalProtocolError,
+    IllegalAliasError,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TentacleInfo {
+    pub name: String,
     pub host: String,
     pub port: i64,
     pub protocol: String,
@@ -82,7 +84,16 @@ impl TentacleClient {
                             .map_err(|_| TentacleConfigError::IllegalProtocolError)
                     })
                     .unwrap_or(Ok(String::from(DEFAULT_PROTOCOL)))?;
+                let name = table
+                    .get("alias")
+                    .map(|v| {
+                        v.clone()
+                            .into_str()
+                            .map_err(|_| TentacleConfigError::IllegalAliasError)
+                    })
+                    .unwrap_or(Ok(host.clone()))?;
                 Ok(TentacleInfo {
+                    name,
                     host,
                     port,
                     protocol,
@@ -143,7 +154,7 @@ impl TentacleClient {
                     message: log_line.message,
                     loglevel: log_line.loglevel,
                     id: id.clone(),
-                    source: format!("{}:{}", tentacle.host, tentacle.port),
+                    source: tentacle.name.clone(),
                 }
             })
             .map_err(|_| LogStreamError::DefaultError);
