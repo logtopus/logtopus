@@ -145,6 +145,8 @@ impl TentacleClient {
                     .map_err(|_| TentacleClientError::ClientError)
             })
             .flatten_stream();
+        let tn1 = tentacle.name.clone();
+        let tn2 = tentacle.name.clone();
         let lines = bytes
             .map(move |b| {
                 let line = String::from_utf8(b.to_vec()).unwrap();
@@ -154,10 +156,10 @@ impl TentacleClient {
                     message: log_line.message,
                     loglevel: log_line.loglevel,
                     id: id.clone(),
-                    source: tentacle.name.clone(),
+                    source: tn1.clone(),
                 }
             })
-            .map_err(|_| LogStreamError::DefaultError);
+            .map_err(move |_| LogStreamError::DefaultError(tn2.clone()));
         Box::new(lines)
     }
 

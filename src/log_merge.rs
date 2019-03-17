@@ -1,13 +1,14 @@
 use crate::tentacle::LogLine;
 use futures::Async::*;
 use futures::{Poll, Stream};
+use log::*;
 use std::fmt;
 use std::fmt::Display;
 use std::vec::Vec;
 
 #[derive(Debug)]
 pub enum LogStreamError {
-    DefaultError,
+    DefaultError(String),
 }
 
 impl Display for LogStreamError {
@@ -23,6 +24,7 @@ enum SourceState {
     NeedsPoll,
     Delivered,
     Finished,
+    Failed,
 }
 
 #[derive(Debug)]
@@ -36,6 +38,7 @@ pub struct LogMerge {
     sources: Vec<LogStream>,
     source_state: Vec<SourceState>,
     buffer: Vec<BufferEntry>,
+    current_timestamp: i64,
 }
 
 impl LogMerge {
@@ -50,6 +53,7 @@ impl LogMerge {
             sources: sources,
             source_state: source_state,
             buffer: Vec::with_capacity(num_sources),
+            current_timestamp: 0,
         }
     }
 
@@ -75,6 +79,21 @@ impl LogMerge {
         self.buffer.insert(insert_at, line);
     }
 
+    fn inject_error(&mut self, err: LogStreamError, source_idx: usize) {
+        match err {
+            LogStreamError::DefaultError(tentacle) => {
+                let log_line = LogLine {
+                    timestamp: self.current_timestamp,
+                    message: format!("A tentacle failed while retrieving the log."),
+                    loglevel: Some(format!("ERROR")),
+                    id: format!(""),
+                    source: tentacle,
+                };
+                self.insert_into_buffer(log_line, source_idx);
+            }
+        };
+    }
+
     fn poll_source(&mut self, source_idx: usize) -> Result<(), LogStreamError> {
         match self.sources[source_idx].poll() {
             Ok(Ready(Some(line))) => {
@@ -88,8 +107,11 @@ impl LogMerge {
             Ok(NotReady) => {
                 self.source_state[source_idx] = SourceState::NeedsPoll;
             }
-            Err(_) => {
-                return Err(LogStreamError::DefaultError);
+            Err(e) => {
+                error!("Source failed: {}", e);
+                self.inject_error(e, source_idx);
+                self.source_state[source_idx] = SourceState::Failed;
+                self.running_sources -= 1;
             }
         }
         Ok(())
@@ -115,7 +137,10 @@ impl Stream for LogMerge {
             Ok(Ready(None))
         } else if self.running_sources == self.buffer.len() {
             let entry = self.next_entry();
-            self.source_state[entry.source_idx] = SourceState::NeedsPoll;
+            if self.source_state[entry.source_idx] == SourceState::Delivered {
+                self.source_state[entry.source_idx] = SourceState::NeedsPoll;
+            }
+            self.current_timestamp = entry.log_line.timestamp;
             Ok(Ready(Some(entry.log_line)))
         } else {
             Ok(NotReady)
