@@ -133,9 +133,9 @@ impl Stream for LogMerge {
                 _ => {}
             }
         }
-        if self.running_sources == 0 {
+        if self.running_sources == 0 && self.buffer.is_empty() {
             Ok(Ready(None))
-        } else if self.running_sources == self.buffer.len() {
+        } else if self.running_sources <= self.buffer.len() {
             let entry = self.next_entry();
             if self.source_state[entry.source_idx] == SourceState::Delivered {
                 self.source_state[entry.source_idx] = SourceState::NeedsPoll;
