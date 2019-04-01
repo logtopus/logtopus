@@ -1,5 +1,5 @@
 http.bind.port: 8081
-http.bind.ip: 127.0.0.1
+http.bind.ip: 0.0.0.0
 
 tentacles: []
    # - host: localhost
@@ -9,7 +9,7 @@ tentacles: []
      # protocol: http
      # in case the hostname is not appropriate you can specify an alias for a tentacle
      # alias: some_name
-   #- host: other host
+   # - host: other host
       # default port 8080 if not specified
       # port: 8080
       # currently supported protocols: http, https

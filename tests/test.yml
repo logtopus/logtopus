@@ -1,9 +1,9 @@
 http.bind.port: 28081
 
 tentacles:
-  - host: localhost
+  - host: 172.18.0.3
     port: 18080
     alias: tentacle_1
-  - host: localhost
+  - host: 172.18.0.4
     port: 18081
     alias: tentacle_2

@@ -1,0 +1,17 @@
+version: '3'
+services:
+  tentacle_1:
+    image: "logtopus/tentacle:latest"
+    volumes:
+      - ./integrationtests_1.yml:/tentacle/config.yml
+      - ./tentacle_1:/logs
+  tentacle_2:
+    image: "logtopus/tentacle:latest"
+    volumes:
+      - ./integrationtests_2.yml:/tentacle/config.yml
+      - ./tentacle_2:/logs
+  logtopus:
+    image: "logtopus/logtopus:latest"
+    volumes:
+      - ./it_test.yml:/logtopus/config.yml
+
